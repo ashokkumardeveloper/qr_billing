@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Product</title>
+<style>
+  :root{
+    --paper:#F3EFE7; --ink:#201D17; --muted:#726A5C; --line:#E5DECF;
+    --primary:#17624B; --primary-ink:#0E4A38; --accent:#B4531F; --ok:#2E7D5B;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;height:100%;}
+  body{
+    font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,sans-serif;
+    background:var(--paper); color:var(--ink);
+    display:flex; flex-direction:column; align-items:center;
+    padding:0 16px 40px; -webkit-font-smoothing:antialiased;
+  }
+  .topbar{width:100%; max-width:440px; display:flex; align-items:center; gap:10px; padding:18px 2px 8px;}
+  .mark{width:30px;height:30px;border-radius:8px;background:var(--primary);display:grid;place-items:center;}
+  .mark svg{width:18px;height:18px;}
+  .brand{font-weight:700;font-size:15px;} .brand small{display:block;font-weight:400;color:var(--muted);font-size:11px;}
+  .verified{margin-left:auto;font-size:11.5px;color:var(--ok);font-weight:650;display:flex;align-items:center;gap:5px;}
+  .verified svg{width:15px;height:15px;}
+  .card{
+    width:100%; max-width:440px; background:#fff;
+    border-radius:16px; overflow:hidden; box-shadow:0 14px 36px -20px rgba(38,30,15,.32);
+  }
+  .hero{aspect-ratio:1/1; width:100%; object-fit:cover; background:#faf7f0; display:block;}
+  .body{padding:20px 20px 22px;}
+  .title{font-size:21px; font-weight:700; letter-spacing:-.01em; line-height:1.25;}
+  .sku{font-size:12px;color:var(--muted);font-family:ui-monospace,Consolas,monospace;margin-top:4px;}
+  .price-row{display:flex; align-items:baseline; gap:12px; margin-top:16px; flex-wrap:wrap;}
+  .selling{font-size:34px; font-weight:750; letter-spacing:-.02em; font-variant-numeric:tabular-nums;}
+  .mrp{font-size:16px;color:var(--muted);text-decoration:line-through;}
+  .save{
+    font-size:12.5px;font-weight:700;color:var(--accent);background:#F7E7DB;
+    padding:3px 10px;border-radius:20px;
+  }
+  .tax{margin-top:6px;font-size:13px;color:var(--muted);}
+  .divider{border:0;border-top:1px solid var(--line);margin:18px 0;}
+  .meta{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);padding:4px 0;}
+  .meta b{color:var(--ink);font-weight:600;}
+  .foot{width:100%;max-width:440px;text-align:center;color:var(--muted);font-size:12px;margin-top:18px;line-height:1.5;}
+  .noprice{background:#FBF8F2;border:1px dashed var(--line);border-radius:12px;padding:16px;text-align:center;color:var(--muted);margin-top:16px;font-size:14px;}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="mark"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.4" fill="#fff"/><rect x="14" y="3" width="7" height="7" rx="1.4" fill="#8FD3B8"/><rect x="3" y="14" width="7" height="7" rx="1.4" fill="#8FD3B8"/><rect x="15" y="15" width="6" height="6" fill="#fff"/></svg></div>
+    <div class="brand" id="biz">Store<small>Product details</small></div>
+    <div class="verified"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg>Verified</div>
+  </div>
+
+  <div class="card">
+    <img class="hero" id="hero" alt="Product image"/>
+    <div class="body">
+      <div class="title" id="title">Product</div>
+      <div class="sku" id="sku"></div>
+      <div id="price-block"></div>
+      <hr class="divider"/>
+      <div class="meta"><span>Sold by</span><b id="soldby">—</b></div>
+      <div class="meta"><span>GST rate</span><b id="gst">—</b></div>
+    </div>
+  </div>
+
+  <div class="foot">Scan any product's QR label to instantly view its price and details.<br/>Powered by <b>QR Billing</b>.</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+  const q = new URLSearchParams(location.search);
+  const CAT = q.get("c") || "#6E675B";
+  const title = q.get("t") || "Product";
+  const cur = q.get("cur") || "₹";
+  const sp = parseFloat(q.get("sp")||"0");
+  const mrp = parseFloat(q.get("mrp")||"0");
+  const gst = q.get("g") || "0";
+  const inc = q.get("inc")==="1";
+  const showPrice = q.get("price")!=="0";
+  const biz = q.get("biz") || "Store";
+  const img = q.get("img");
+
+  function money(n){ return cur + new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n); }
+  function placeholder(label,color){
+    const initials = label.split(/\s+/).slice(0,2).map(w=>w[0]||"").join("").toUpperCase();
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'>`+
+      `<rect width='400' height='400' fill='${color}' opacity='0.10'/>`+
+      `<circle cx='200' cy='175' r='90' fill='${color}' opacity='0.16'/>`+
+      `<text x='200' y='200' font-family='Segoe UI,sans-serif' font-size='90' font-weight='700' fill='${color}' text-anchor='middle'>${initials}</text>`+
+      `<text x='200' y='300' font-family='Segoe UI,sans-serif' font-size='24' fill='${color}' opacity='0.7' text-anchor='middle'>${label.length>20?label.slice(0,19)+'…':label}</text></svg>`;
+    return "data:image/svg+xml;utf8,"+encodeURIComponent(svg);
+  }
+
+  document.title = title;
+  document.getElementById("hero").src = img || placeholder(title, CAT);
+  document.getElementById("hero").onerror = function(){ this.src = placeholder(title, CAT); };
+  document.getElementById("title").textContent = title;
+  const sku = q.get("sku"); if(sku) document.getElementById("sku").textContent = "SKU · "+sku;
+  document.getElementById("biz").innerHTML = biz+"<small>Product details</small>";
+  document.getElementById("soldby").textContent = biz;
+  document.getElementById("gst").textContent = gst+"% "+(inc?"(incl. in price)":"(extra)");
+
+  const pb = document.getElementById("price-block");
+  if(showPrice){
+    const savePct = (mrp>sp && mrp>0) ? Math.round((mrp-sp)/mrp*100) : 0;
+    pb.innerHTML = `
+      <div class="price-row">
+        <span class="selling">${money(sp)}</span>
+        ${mrp>sp?`<span class="mrp">${money(mrp)}</span>`:""}
+        ${savePct>0?`<span class="save">Save ${savePct}%</span>`:""}
+      </div>
+      <div class="tax">${inc?"Inclusive of all taxes":"Plus "+gst+"% GST at billing"}</div>`;
+  } else {
+    pb.innerHTML = `<div class="noprice">Price shown at billing counter.</div>`;
+  }
+</script>
+</body>
+</html>

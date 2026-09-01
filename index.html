@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QR Billing — GST Billing (Prototype)</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='5' fill='%2317624B'/><path d='M6 8h4v4H6zM14 8h4v4h-4zM6 14h4v4H6z' fill='white'/></svg>" />
+</head>
+<body>
+<div class="app">
+  <!-- ===================== Sidebar ===================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.4" fill="#fff"/><rect x="14" y="3" width="7" height="7" rx="1.4" fill="#8FD3B8"/><rect x="3" y="14" width="7" height="7" rx="1.4" fill="#8FD3B8"/><rect x="15" y="15" width="2.6" height="2.6" fill="#fff"/><rect x="19" y="15" width="2" height="2" fill="#fff"/><rect x="15" y="19" width="2" height="2" fill="#fff"/><rect x="19" y="19" width="2" height="2" fill="#fff"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">QR Billing</div>
+        <div class="brand-sub">GST invoicing</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-view="billing">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3h2l2.4 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/></svg>
+        <span>New Bill</span>
+      </button>
+      <button class="nav-item" data-view="products">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.3 7 12 3l8.7 4v10L12 21 3.3 17z"/><path d="M3.3 7 12 11l8.7-4M12 11v10"/></svg>
+        <span>Products</span>
+        <span class="badge" id="nav-prod-count">0</span>
+      </button>
+      <button class="nav-item" data-view="invoices">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>
+        <span>Invoices</span>
+        <span class="badge" id="nav-inv-count">0</span>
+      </button>
+      <button class="nav-item" data-view="analytics">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="0.5"/><rect x="12" y="8" width="3" height="10" rx="0.5"/><rect x="17" y="4" width="3" height="14" rx="0.5"/></svg>
+        <span>Analytics</span>
+      </button>
+      <button class="nav-item" data-view="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="biz" id="side-biz">Your Business</div>
+      <div class="gstin" id="side-gstin">GSTIN —</div>
+    </div>
+  </aside>
+
+  <!-- ===================== Main ===================== -->
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="view-title">New Bill</h1>
+        <div class="sub" id="view-sub">Pick products and generate a GST invoice</div>
+      </div>
+      <div class="topbar-actions" id="topbar-actions"></div>
+    </header>
+
+    <!-- ===== Billing ===== -->
+    <section class="view" id="view-billing">
+      <div class="billing">
+        <!-- Product picker -->
+        <div class="panel">
+          <div class="pick-toolbar">
+            <div class="input-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+              <input class="input" id="pick-search" placeholder="Search products by name or SKU…" />
+            </div>
+            <div id="pick-cats" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+          </div>
+          <div class="product-grid" id="pick-grid"></div>
+        </div>
+
+        <!-- Cart -->
+        <div class="cart">
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Current Bill</h3>
+              <span class="sub" id="cart-count">0 items</span>
+              <button class="btn btn-ghost btn-sm" id="cart-clear" style="margin-left:auto;">Clear</button>
+            </div>
+            <div class="cart-lines" id="cart-lines"></div>
+            <div class="totals" id="cart-totals"></div>
+            <div class="panel-body" style="border-top:1px solid var(--line);">
+              <div class="section-title" style="margin-bottom:10px;">Customer (optional)</div>
+              <div style="display:grid; gap:10px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                  <input class="input" id="cust-name" placeholder="Customer name" />
+                  <input class="input" id="cust-phone" placeholder="Phone" />
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 130px; gap:10px;">
+                  <input class="input" id="cust-gstin" placeholder="Customer GSTIN (B2B)" />
+                  <select class="select" id="cust-state" title="Place of supply"></select>
+                </div>
+              </div>
+              <button class="btn btn-accent btn-block" id="btn-generate" style="margin-top:14px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
+                Generate &amp; Print Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Products ===== -->
+    <section class="view" id="view-products" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Product Catalogue</h3>
+          <span class="sub" id="prod-sub">Manage products, pricing and QR codes</span>
+          <div class="input-icon" id="prod-search-wrap" style="margin-left:auto; max-width:280px; width:100%;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+            <input class="input" id="prod-search" placeholder="Search name, SKU or category…" />
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="prod-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th class="right">MRP</th>
+                <th class="right">Selling</th>
+                <th class="right">GST</th>
+                <th class="right">Stock</th>
+                <th style="text-align:center;">QR</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="prod-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Invoices ===== -->
+    <section class="view" id="view-invoices" hidden>
+      <div class="panel">
+        <div class="panel-head"><h3>Saved Invoices</h3><span class="sub">Recent bills generated in this session</span></div>
+        <div class="table-wrap">
+          <table class="data" id="inv-table">
+            <thead><tr><th>Invoice #</th><th>Customer</th><th>Date</th><th class="right">Items</th><th class="right">Total</th><th></th></tr></thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Analytics ===== -->
+    <section class="view" id="view-analytics" hidden>
+      <div class="seg" id="period-seg">
+        <button data-period="30" class="active">Last 30 days</button>
+        <button data-period="month">This month</button>
+        <button data-period="year">This year</button>
+        <button data-period="all">All time</button>
+      </div>
+
+      <div class="kpi-row" id="kpi-row"></div>
+
+      <div class="chart-grid">
+        <div class="panel">
+          <div class="panel-head"><h3>Monthly sales</h3><span class="sub" id="month-sub">Last 8 months</span></div>
+          <div class="panel-body"><div class="bars" id="month-bars"></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Top products</h3><span class="sub">By revenue in period</span></div>
+          <div class="panel-body"><div id="top-products"></div></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <div class="panel-head"><h3>Daily sales</h3><span class="sub" id="daily-sub">Date-wise revenue</span></div>
+        <div class="panel-body"><div class="bars tall" id="daily-bars"></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <div class="panel-head"><h3>Day-wise report</h3><span class="sub">Detailed daily numbers for the period</span></div>
+        <div class="table-wrap">
+          <table class="data" id="daily-table">
+            <thead><tr><th>Date</th><th class="right">Invoices</th><th class="right">Items</th><th class="right">Taxable</th><th class="right">GST</th><th class="right">Sales</th></tr></thead>
+            <tbody id="daily-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Settings ===== -->
+    <section class="view" id="view-settings" hidden>
+      <div class="settings-grid">
+        <!-- Business details -->
+        <div class="panel col-span">
+          <div class="panel-head"><h3>Business Details</h3><span class="sub">Printed on every invoice</span></div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <div class="field span"><label>Business / Shop name</label><input class="input" id="s-name" placeholder="e.g. Sri Balaji Traders" /></div>
+              <div class="field"><label>GSTIN</label><input class="input mono" id="s-gstin" placeholder="e.g. 33ABCDE1234F1Z5" /></div>
+              <div class="field"><label>Phone</label><input class="input" id="s-phone" placeholder="Phone number" /></div>
+              <div class="field span"><label>Address</label><textarea class="input" id="s-address" placeholder="Shop address, city, PIN"></textarea></div>
+              <div class="field"><label>Email <span class="opt">(optional)</span></label><input class="input" id="s-email" placeholder="billing@shop.com" /></div>
+              <div class="field"><label>Home state (place of business)</label><select class="select" id="s-state"></select></div>
+              <div class="field"><label>Invoice prefix</label><input class="input mono" id="s-prefix" placeholder="INV-" /></div>
+              <div class="field"><label>Logo <span class="opt">(optional)</span></label>
+                <div class="img-pick">
+                  <img class="img-preview" id="s-logo-preview" alt="logo" style="width:64px;height:64px;" />
+                  <div style="flex:1;">
+                    <input class="input" id="s-logo" placeholder="Paste image URL or leave blank" />
+                    <div class="hint" style="margin-top:6px;">Leave blank to use a text wordmark.</div>
+                  </div>
+                </div>
+              </div>
+              <div class="field span"><label>Invoice footer / terms <span class="opt">(optional)</span></label><textarea class="input" id="s-terms" placeholder="e.g. Goods once sold will not be taken back. Thank you!"></textarea></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tax settings -->
+        <div class="panel">
+          <div class="panel-head"><h3>Tax &amp; Pricing</h3></div>
+          <div class="panel-body" style="display:grid; gap:12px;">
+            <div class="toggle">
+              <div class="tx">
+                <div class="tt">Selling prices include GST</div>
+                <div class="td">When ON, GST is calculated <em>within</em> the price (tax back-worked). When OFF, GST is added on top.</div>
+              </div>
+              <button class="switch" id="s-inclusive" role="switch" aria-checked="true"></button>
+            </div>
+            <div class="toggle">
+              <div class="tx">
+                <div class="tt">Show price on scanned QR</div>
+                <div class="td">Customer scanning a product QR sees image, title, selling price &amp; MRP.</div>
+              </div>
+              <button class="switch" id="s-qr-price" role="switch" aria-checked="true"></button>
+            </div>
+            <div class="field">
+              <label>Default GST rate for new products</label>
+              <select class="select" id="s-default-gst">
+                <option value="0">0% (exempt)</option>
+                <option value="5">5%</option>
+                <option value="12">12%</option>
+                <option value="18" selected>18%</option>
+                <option value="28">28%</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Currency symbol</label>
+              <input class="input" id="s-currency" value="₹" maxlength="3" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Invoice format -->
+        <div class="panel">
+          <div class="panel-head"><h3>Invoice Format</h3><span class="sub">Choose a layout customers prefer</span></div>
+          <div class="panel-body">
+            <div class="template-row" id="template-row">
+              <button class="template-card" data-tpl="classic" aria-pressed="true">
+                <div class="tcheck"><svg viewBox="0 0 24 24" width="13" fill="none" stroke="#fff" stroke-width="3"><path d="m5 12 5 5L20 7"/></svg></div>
+                <div class="tv" id="tv-classic"></div>
+                <div class="tname">Classic</div>
+                <div class="tdesc">Coloured band, formal tax invoice</div>
+              </button>
+              <button class="template-card" data-tpl="modern" aria-pressed="false">
+                <div class="tcheck"><svg viewBox="0 0 24 24" width="13" fill="none" stroke="#fff" stroke-width="3"><path d="m5 12 5 5L20 7"/></svg></div>
+                <div class="tv" id="tv-modern"></div>
+                <div class="tname">Modern</div>
+                <div class="tdesc">Clean, minimal, lots of space</div>
+              </button>
+              <button class="template-card" data-tpl="thermal" aria-pressed="false">
+                <div class="tcheck"><svg viewBox="0 0 24 24" width="13" fill="none" stroke="#fff" stroke-width="3"><path d="m5 12 5 5L20 7"/></svg></div>
+                <div class="tv" id="tv-thermal"></div>
+                <div class="tname">Thermal 80mm</div>
+                <div class="tdesc">POS receipt printer roll</div>
+              </button>
+            </div>
+            <div class="hint" style="margin-top:12px;">Tap a format to preview it live on your next invoice.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ===================== Mobile bottom nav ===================== -->
+<nav class="mobile-nav" id="mobile-nav">
+  <button data-view="billing" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3h2l2.4 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/></svg>Bill</button>
+  <button data-view="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.3 7 12 3l8.7 4v10L12 21 3.3 17z"/><path d="M3.3 7 12 11l8.7-4M12 11v10"/></svg>Products</button>
+  <button data-view="invoices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6"/></svg>Invoices</button>
+  <button data-view="analytics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="0.5"/><rect x="12" y="8" width="3" height="10" rx="0.5"/><rect x="17" y="4" width="3" height="14" rx="0.5"/></svg>Reports</button>
+  <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>Settings</button>
+</nav>
+
+<!-- ===================== Modals ===================== -->
+<div class="modal-backdrop" id="modal-root" hidden></div>
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<!-- QR generator (offline-capable) -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
