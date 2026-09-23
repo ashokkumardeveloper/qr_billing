@@ -26,22 +26,59 @@ function placeholderImg(label, color){
 }
 function escapeXml(s){ return String(s).replace(/[<>&'"]/g, c=>({ "<":"&lt;",">":"&gt;","&":"&amp;","'":"&apos;",'"':"&quot;"}[c])); }
 
+/* ---------- Barcode helpers ---------- */
+// India retail barcodes start with 890. This makes a plausible 13-digit EAN-style number.
+function genBarcode(){ return "890" + Math.floor(1e9 + Math.random()*9e9).toString() + Math.floor(Math.random()*10); }
+function drawBarcode(el, value, opts){
+  if(typeof JsBarcode === "undefined" || !el || !value) return false;
+  try { JsBarcode(el, String(value), Object.assign({ format:"CODE128", displayValue:false, height:34, width:1.6, margin:0, background:"transparent", lineColor:"#201D17" }, opts||{})); return true; }
+  catch(e){ return false; }
+}
+function barcodeDataURL(value){
+  if(typeof JsBarcode === "undefined" || !value) return "";
+  try { const c=document.createElement("canvas"); JsBarcode(c, String(value), {format:"CODE128", displayValue:true, height:52, fontSize:15, margin:6, width:1.8}); return c.toDataURL("image/png"); }
+  catch(e){ return ""; }
+}
+function findByCode(code){
+  code=(code||"").trim(); if(!code) return null; const lc=code.toLowerCase();
+  return state.products.find(p=> (p.barcode && String(p.barcode)===code) || (p.sku && p.sku.toLowerCase()===lc)) || null;
+}
+// Crisp PNG of a QR (drawn from modules, not the gif) — for downloading/printing.
+function qrPngDataURL(text, scale, margin){
+  if(typeof qrcode === "undefined" || !text) return "";
+  scale = scale||8; margin = margin==null?4:margin;
+  try{
+    const q=qrcode(0,"M"); q.addData(text); q.make();
+    const n=q.getModuleCount(), size=(n+margin*2)*scale;
+    const c=document.createElement("canvas"); c.width=c.height=size; const x=c.getContext("2d");
+    x.fillStyle="#fff"; x.fillRect(0,0,size,size); x.fillStyle="#000";
+    for(let r=0;r<n;r++) for(let col=0;col<n;col++) if(q.isDark(r,col)) x.fillRect((col+margin)*scale,(r+margin)*scale,scale,scale);
+    return c.toDataURL("image/png");
+  }catch(e){ return ""; }
+}
+function slug(s){ return String(s||"code").trim().replace(/[^\w.-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,48) || "code"; }
+function downloadDataURL(url, name){
+  if(!url){ toast("Image not available"); return; }
+  const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  toast("Downloaded "+name);
+}
+
 /* ---------- Seed data ---------- */
 function seedProducts(){
   const p = [
-    ["Aashirvaad Atta 5kg","ATT-5K",285,265,5,"Grocery",40],
-    ["Tata Salt 1kg","SLT-1K",28,26,5,"Grocery",120],
-    ["Amul Butter 500g","AMB-500",285,275,12,"Dairy",24],
-    ["Colgate MaxFresh 150g","CLG-150",99,92,18,"Personal",60],
-    ["Parle-G Biscuit 250g","PGB-250",30,28,18,"Snacks",8],
-    ["Fortune Sunflower Oil 1L","OIL-1L",145,139,5,"Grocery",55],
-    ["Dettol Handwash 200ml","DTL-200",99,85,18,"Personal",30],
-    ["Bru Instant Coffee 100g","BRU-100",175,168,18,"Beverage",0],
-    ["Maggi Noodles 12-pack","MAG-12",168,155,18,"Snacks",45],
-    ["Surf Excel 1kg","SRF-1K",130,118,18,"Home",22],
+    ["Aashirvaad Atta 5kg","ATT-5K",285,265,5,"Grocery",40,"8901030865278"],
+    ["Tata Salt 1kg","SLT-1K",28,26,5,"Grocery",120,"8901030675423"],
+    ["Amul Butter 500g","AMB-500",285,275,12,"Dairy",24,"8901020100125"],
+    ["Colgate MaxFresh 150g","CLG-150",99,92,18,"Personal",60,"8901314010470"],
+    ["Parle-G Biscuit 250g","PGB-250",30,28,18,"Snacks",8,"8901063011336"],
+    ["Fortune Sunflower Oil 1L","OIL-1L",145,139,5,"Grocery",55,"8906007560012"],
+    ["Dettol Handwash 200ml","DTL-200",99,85,18,"Personal",30,"8901396333333"],
+    ["Bru Instant Coffee 100g","BRU-100",175,168,18,"Beverage",0,"8901030112233"],
+    ["Maggi Noodles 12-pack","MAG-12",168,155,18,"Snacks",45,"8901058847284"],
+    ["Surf Excel 1kg","SRF-1K",130,118,18,"Home",22,"8901030555667"],
   ];
   return p.map((r,i)=>({
-    id: "p"+(i+1), title:r[0], sku:r[1], mrp:r[2], selling:r[3], gst:r[4], category:r[5], stock:r[6],
+    id: "p"+(i+1), title:r[0], sku:r[1], mrp:r[2], selling:r[3], gst:r[4], category:r[5], stock:r[6], barcode:r[7],
     img: placeholderImg(r[0], CAT_COLORS[r[5]])
   }));
 }
@@ -106,6 +143,9 @@ let currentView = "billing";
 let pickFilter = { q:"", cat:"All" };
 let anPeriod = "30";
 let prodQuery = "";
+let billMode = "scan";     // single billing mode (scan / quick-bill table)
+let holds = [];            // parked bills
+let customer = { name:"", phone:"", gstin:"", state:"" }; // collected at checkout (optional)
 
 function load(){
   try {
@@ -171,7 +211,7 @@ function billTotals(){
     const qty = cart[id]; const c = lineCalc(p, qty);
     return { p, qty, ...c };
   }).filter(Boolean);
-  const custState = $("#cust-state") ? $("#cust-state").value : "";
+  const custState = customer.state;
   const inter = custState && custState !== S().state;
   let taxable=0, tax=0, gross=0, qtyTot=0;
   const byRate = {};
@@ -187,7 +227,7 @@ function billTotals(){
    Routing
    ============================================================ */
 const TITLES = {
-  billing:["New Bill","Pick products and generate a GST invoice"],
+  billing:["New Bill","Scan or search products, then checkout the GST bill"],
   products:["Products","Add products, set prices and print QR labels"],
   invoices:["Invoices","Bills generated in this session"],
   analytics:["Reports & Analytics","Month-wise and date-wise sales"],
@@ -205,6 +245,7 @@ function setView(v){
   if(v==="invoices") renderInvoices();
   if(v==="analytics") renderAnalytics();
   if(v==="settings") renderSettings();
+  if(v==="billing") setTimeout(focusScan, 60);
   window.scrollTo(0,0);
 }
 function renderTopbar(){
@@ -216,7 +257,13 @@ function renderTopbar(){
     a.innerHTML = `<button class="btn btn-primary" id="btn-save-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg><span class="label">Save settings</span></button>`;
     $("#btn-save-settings").onclick = saveSettings;
   } else if(currentView==="billing"){
-    a.innerHTML = `<span class="hint" style="display:flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="15" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--muted)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${S().inclusive?"Prices incl. GST":"GST added at checkout"}</span>`;
+    a.innerHTML = `<span class="hint" style="display:flex;align-items:center;gap:6px;"><svg viewBox="0 0 24 24" width="15" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--muted)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${S().inclusive?"Prices incl. GST":"GST added at checkout"}</span>
+      <button class="btn btn-sm" id="printer-chip" title="Connect the thermal printer (one-time)"></button>
+      <button class="btn btn-sm" id="btn-shortcuts" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg><span class="label">Shortcuts</span></button>`;
+    $("#btn-shortcuts").onclick = openShortcutsModal;
+    $("#printer-chip").onclick = connectPrinter;
+    updatePrinterChip();
+    ensurePrinter();
   } else { a.innerHTML = ""; }
 }
 
@@ -225,6 +272,7 @@ function renderTopbar(){
    ============================================================ */
 function categories(){ return ["All", ...new Set(state.products.map(p=>p.category||"Other"))]; }
 function renderPickCats(){
+  if(!$("#pick-cats")) return;
   $("#pick-cats").innerHTML = categories().map(c=>
     `<button class="chip ${pickFilter.cat===c?"active":""}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("");
   $$("#pick-cats .chip").forEach(b=> b.onclick=()=>{ pickFilter.cat=b.dataset.cat; renderPickCats(); renderPickGrid(); });
@@ -237,6 +285,7 @@ function stockBadge(p){
   return `<span class="stock-dot ${cls}">${txt}</span>`;
 }
 function renderPickGrid(){
+  if(!$("#pick-grid")) return;
   const q = pickFilter.q.toLowerCase();
   const list = state.products.filter(p=>{
     const okCat = pickFilter.cat==="All" || (p.category||"Other")===pickFilter.cat;
@@ -269,50 +318,201 @@ function renderPickGrid(){
 function addToCart(id){ cart[id]=(cart[id]||0)+1; renderPickGrid(); renderCart(); }
 function setQty(id,q){ if(q<=0) delete cart[id]; else cart[id]=q; renderPickGrid(); renderCart(); }
 
+function breakdownText(t){
+  const parts = [`Taxable ${money(t.taxable)}`];
+  if(t.tax>0){
+    if(t.inter) parts.push(`IGST ${money(t.igst)}`);
+    else { parts.push(`CGST ${money(t.cgst)}`); parts.push(`SGST ${money(t.sgst)}`); }
+  }
+  if(Math.abs(t.roundOff)>=0.005) parts.push(`Round off ${t.roundOff>=0?"+":"−"}${money(Math.abs(t.roundOff))}`);
+  return parts.join("  ·  ");
+}
+
 function renderCart(){
   const t = billTotals();
-  $("#cart-count").textContent = `${t.qtyTot} item${t.qtyTot!==1?"s":""}`;
-  const lines = $("#cart-lines");
-  if(!t.items.length){
-    lines.innerHTML = `<div class="cart-empty">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3h2l2.4 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/></svg>
-      <div>No items yet.<br/>Tap a product to start billing.</div></div>`;
-  } else {
-    lines.innerHTML = t.items.map(it=>`
-      <div class="line">
-        <div>
-          <div class="lt">${escapeHtml(it.p.title)}</div>
-          <div class="lsub">${money(it.p.selling)} × ${it.qty} · ${it.g}% GST</div>
-        </div>
-        <div class="lamt">${money(it.gross)}</div>
-        <div class="qty">
-          <button data-dec="${it.p.id}">−</button><span>${it.qty}</span><button data-inc="${it.p.id}">+</button>
-        </div>
-        <button class="icon-btn danger lremove" data-rm="${it.p.id}" title="Remove">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12"/></svg>
-        </button>
-      </div>`).join("");
-    $$("#cart-lines [data-inc]").forEach(b=>b.onclick=()=>setQty(b.dataset.inc, cart[b.dataset.inc]+1));
-    $$("#cart-lines [data-dec]").forEach(b=>b.onclick=()=>setQty(b.dataset.dec, cart[b.dataset.dec]-1));
-    $$("#cart-lines [data-rm]").forEach(b=>b.onclick=()=>setQty(b.dataset.rm, 0));
-  }
-
-  const taxLabel = t.inter
-    ? `<div class="trow"><span>IGST</span><span class="tval">${money(t.igst)}</span></div>`
-    : `<div class="trow"><span>CGST</span><span class="tval">${money(t.cgst)}</span></div>
-       <div class="trow"><span>SGST</span><span class="tval">${money(t.sgst)}</span></div>`;
-  $("#cart-totals").innerHTML = `
-    <div class="trow"><span>Taxable value</span><span class="tval">${money(t.taxable)}</span></div>
-    ${t.tax>0?taxLabel:""}
-    ${Math.abs(t.roundOff)>=0.005?`<div class="trow muted"><span>Round off</span><span class="tval">${t.roundOff>=0?"+":"−"}${money(Math.abs(t.roundOff)).replace(cur(),cur())}</span></div>`:""}
-    <div class="trow grand"><span>Total ${S().inclusive?"":"payable"}</span><span class="tval">${money(t.grand)}</span></div>`;
-  $("#btn-generate").disabled = !t.items.length;
-
+  renderScanCart(t);
+  updateActionBar(t);
   // sidebar/nav counts
   $("#nav-prod-count").textContent = state.products.length;
   $("#nav-inv-count").textContent = state.invoices.length;
   $("#side-biz").textContent = S().name || "Your Business";
   $("#side-gstin").textContent = "GSTIN " + (S().gstin || "—");
+}
+function updateActionBar(t){
+  t = t || billTotals();
+  if(!$("#ab-count")) return;
+  $("#ab-count").textContent = `${t.qtyTot} item${t.qtyTot!==1?"s":""}`;
+  $("#ab-break").innerHTML = t.items.length ? breakdownText(t) : "Scan or search to add items";
+  $("#ab-total").textContent = money(t.grand);
+  $("#ab-print").disabled = !t.items.length;
+}
+
+/* ============================================================
+   Barcode scanner / POS mode
+   ============================================================ */
+let suggList = [], suggIndex = -1, lastAddedId = null;
+
+function setBillMode(){ billMode="scan"; setScanStatus("Ready"); focusScan(); }
+function focusScan(){ const el=$("#scan-input"); if(el){ setTimeout(()=>{ el.focus(); }, 40); } }
+function setScanStatus(text, busy){ const el=$("#scan-status"); if(!el) return; el.textContent=text; el.classList.toggle("busy", !!busy); }
+
+let _actx = null;
+function beep(ok){
+  try{ _actx = _actx || new (window.AudioContext||window.webkitAudioContext)();
+    const o=_actx.createOscillator(), g=_actx.createGain();
+    o.type="square"; o.frequency.value = ok?1400:320; g.gain.value=0.05;
+    o.connect(g); g.connect(_actx.destination); o.start();
+    o.stop(_actx.currentTime + (ok?0.06:0.16));
+  }catch(e){}
+}
+
+/* ---------- Type-ahead suggestions ---------- */
+function suggestMatches(q){
+  q=q.trim().toLowerCase(); if(!q) return [];
+  return state.products.filter(p=> p.title.toLowerCase().includes(q) || (p.sku||"").toLowerCase().includes(q) || (p.barcode||"").includes(q)).slice(0,7);
+}
+function renderSuggest(){
+  const box=$("#suggest"); if(!box) return;
+  const q=$("#scan-input").value;
+  suggList = suggestMatches(q);
+  if(!q.trim()){ hideSuggest(); return; }
+  if(!suggList.length){ box.hidden=false; box.innerHTML=`<div class="sg-empty">No match — a barcode scan will still add it</div>`; suggIndex=-1; return; }
+  if(suggIndex>=suggList.length || suggIndex<0) suggIndex=0;
+  box.hidden=false;
+  box.innerHTML = suggList.map((p,i)=>`
+    <div class="sg ${i===suggIndex?'active':''}" data-sg="${p.id}">
+      <img src="${p.img}" alt="" onerror="this.src='${placeholderImg(p.title, CAT_COLORS[p.category]||'#6E675B')}'"/>
+      <div class="sg-b"><div class="sg-n">${escapeHtml(p.title)}</div>
+        <div class="sg-m">${escapeHtml(p.sku||p.barcode||"")} · ${money(p.selling)}${(p.stock!==""&&p.stock!=null)?` · ${Number(p.stock)<=0?"out of stock":p.stock+" in stock"}`:""}</div></div>
+      <div class="sg-add">Add</div>
+    </div>`).join("");
+  $$("#suggest [data-sg]").forEach(el=> el.onclick=()=>{ const p=state.products.find(x=>x.id===el.dataset.sg); if(p) addScan(p); });
+}
+function hideSuggest(){ const box=$("#suggest"); if(box){ box.hidden=true; box.innerHTML=""; } suggIndex=-1; suggList=[]; }
+function moveSuggest(d){ if(!suggList.length) return; suggIndex=(suggIndex+d+suggList.length)%suggList.length; renderSuggest(); }
+
+/* ---------- Add via scan or pick ---------- */
+function addScan(p){
+  addToCart(p.id); beep(true); setScanStatus("Added "+(p.sku||p.title)); lastAddedId=p.id;
+  $("#scan-input").value=""; hideSuggest(); focusScan();
+}
+function scanEnter(){
+  const v=$("#scan-input").value.trim(); if(!v) return;
+  const exact = findByCode(v);
+  if(exact){ addScan(exact); return; }            // exact barcode/SKU → scan path
+  const pick = suggList[suggIndex>=0?suggIndex:0]; // else take highlighted / first suggestion
+  if(pick){ addScan(pick); return; }
+  beep(false); setScanStatus("No match for “"+v+"”", true); toast("No product for "+v);
+  const el=$("#scan-input"); el.select&&el.select();
+}
+function renderScanCart(t){
+  const tb=$("#scan-cart-tbody"); if(!tb) return;
+  if(!t.items.length){ tb.innerHTML=`<tr class="bill-empty"><td colspan="7"><div class="empty-state" style="padding:40px 12px;"><h3>No items yet</h3><p>Scan a barcode or type a product name to start the bill.</p></div></td></tr>`; return; }
+  tb.innerHTML = t.items.map((it,i)=>`
+    <tr data-row="${it.p.id}" class="${it.p.id===lastAddedId?'just-added':''}">
+      <td class="mono" style="color:var(--muted);">${i+1}</td>
+      <td><div class="tt" style="font-weight:600;">${escapeHtml(it.p.title)}</div><div class="ts mono">${escapeHtml(it.p.barcode||it.p.sku||"")}</div></td>
+      <td class="right mono">${money(it.p.selling)}</td>
+      <td style="text-align:center;"><input type="number" class="qty-input" data-qty="${it.p.id}" value="${it.qty}" min="0" step="1" inputmode="numeric" aria-label="Quantity for ${escapeHtml(it.p.title)}"/></td>
+      <td class="right mono">${it.g}%</td>
+      <td class="right mono amt" style="font-weight:700;">${money(it.gross)}</td>
+      <td><button class="icon-btn danger" data-rm="${it.p.id}" title="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12"/></svg></button></td>
+    </tr>`).join("");
+  $$("#scan-cart-tbody [data-qty]").forEach(inp=>{
+    inp.oninput = ()=> setQtyLive(inp.dataset.qty, inp.value);
+    inp.onfocus = ()=> inp.select();
+    inp.onkeydown = (e)=>{
+      if(e.key==="Enter"){ e.preventDefault(); focusScan(); }
+      else if(e.key==="Delete"){ e.preventDefault(); setQty(inp.dataset.qty, 0); focusScan(); }
+    };
+  });
+  $$("#scan-cart-tbody [data-rm]").forEach(b=>b.onclick=()=>{ setQty(b.dataset.rm, 0); focusScan(); });
+}
+// live qty edit without rebuilding the table (keeps keyboard focus in the number field)
+function setQtyLive(id, v){
+  v = parseInt(v, 10);
+  if(isNaN(v)) return;
+  if(v<=0){ setQty(id, 0); focusScan(); return; }
+  cart[id] = v;
+  const p = state.products.find(x=>x.id===id); if(!p) return;
+  const row = $(`#scan-cart-tbody tr[data-row="${id}"]`);
+  if(row){ const amt=row.querySelector(".amt"); if(amt) amt.textContent = money(lineCalc(p, v).gross); }
+  updateActionBar();
+}
+
+/* ---------- Held bills ---------- */
+function holdBill(){
+  const t = billTotals(); if(!t.items.length){ toast("Nothing to hold"); return; }
+  holds.push({ id:Date.now(), cart:{...cart}, total:t.grand, count:t.qtyTot, name:$("#cust-name").value.trim() });
+  resetBill(); renderHolds(); toast("Bill held");
+}
+function renderHolds(){
+  const s=$("#holds-strip"); if(!s) return;
+  if(!holds.length){ s.hidden=true; s.innerHTML=""; return; }
+  s.hidden=false;
+  s.innerHTML = `<span class="hint" style="align-self:center;">Held bills:</span>` + holds.map(h=>
+    `<button class="hold-chip" data-hold="${h.id}">${escapeHtml(h.name||"Bill")} · ${money0(h.total)} <span style="color:var(--muted)">(${h.count})</span> <span class="x" data-del="${h.id}" title="Discard">✕</span></button>`).join("");
+  $$("#holds-strip [data-hold]").forEach(b=> b.onclick=(e)=>{ if(e.target.closest("[data-del]")) return; resumeHold(+b.dataset.hold); });
+  $$("#holds-strip [data-del]").forEach(b=> b.onclick=(e)=>{ e.stopPropagation(); holds=holds.filter(h=>h.id!=b.dataset.del); renderHolds(); });
+}
+function resumeHold(id){
+  const h=holds.find(x=>x.id===id); if(!h) return;
+  if(Object.keys(cart).length && !confirm("Replace the current bill with the held one?")) return;
+  cart={...h.cart}; if(h.name) $("#cust-name").value=h.name;
+  holds=holds.filter(x=>x.id!==id); renderHolds(); renderPickGrid(); renderCart();
+  toast("Bill resumed");
+}
+
+/* ============================================================
+   Keyboard shortcuts (native-app feel — great for the Windows build)
+   ============================================================ */
+const SHORTCUTS = [
+  ["F2", "Focus the scan box"],
+  ["F4", "Checkout + customer details"],
+  ["F6", "Hold current bill"],
+  ["F7", "Resume last held bill"],
+  ["F8", "Save invoice (chosen format)"],
+  ["F9", "Checkout — Cash / UPI → print"],
+  ["Enter", "Add scanned / highlighted item"],
+  ["↑ ↓", "Move through suggestions"],
+  ["Alt + 1…5", "Switch tabs"],
+  ["Ctrl + P", "Print open invoice · Esc close"],
+  ["?", "Show this help"],
+];
+function openShortcutsModal(){
+  openModal(`
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-head"><h3>Keyboard shortcuts</h3><button class="btn btn-ghost btn-sm close" data-close>✕</button></div>
+      <div class="modal-body">
+        <div class="sc-list">
+          ${SHORTCUTS.map(([k,d])=>`<div class="sc-row"><kbd class="sc-key">${k}</kbd><span>${d}</span></div>`).join("")}
+        </div>
+        <div class="hint" style="margin-top:14px;">Function keys work like a native billing counter — no mouse needed. A hardware barcode scanner (USB/Bluetooth) types the code and presses Enter automatically.</div>
+      </div>
+      <div class="modal-foot"><button class="btn btn-primary" data-close>Got it</button></div>
+    </div>`);
+}
+function handleShortcut(e){
+  // Alt + number → tabs (works anywhere)
+  if(e.altKey && !e.ctrlKey){
+    const map={"1":"billing","2":"products","3":"invoices","4":"analytics","5":"settings"};
+    if(map[e.key]){ e.preventDefault(); location.hash=map[e.key]; setView(map[e.key]); return; }
+  }
+  const modalOpen = !$("#modal-root").hidden;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||"");
+  // "?" help (not while typing)
+  if(e.key==="?" && !typing){ e.preventDefault(); openShortcutsModal(); return; }
+  // Function keys — act even while typing (native-app feel), only on billing view
+  if(currentView==="billing" && !modalOpen){
+    switch(e.key){
+      case "F2": e.preventDefault(); focusScan(); return;
+      case "F4": e.preventDefault(); openCheckout(true); return;
+      case "F6": e.preventDefault(); holdBill(); return;
+      case "F7": e.preventDefault(); if(holds.length) resumeHold(holds[holds.length-1].id); else toast("No held bills"); return;
+      case "F8": e.preventDefault(); generateInvoice(); return;
+      case "F9": e.preventDefault(); openCheckout(); return;
+    }
+  }
 }
 
 /* ============================================================
@@ -331,7 +531,8 @@ function renderProducts(){
         <div class="tprod">
           <img src="${p.img}" alt="" onerror="this.src='${placeholderImg(p.title, CAT_COLORS[p.category]||'#6E675B')}'"/>
           <div><div class="tt">${escapeHtml(p.title)}</div>
-          <div class="ts">${p.sku?escapeHtml(p.sku)+" · ":""}${escapeHtml(p.category||"Other")}</div></div>
+          <div class="ts">${p.sku?escapeHtml(p.sku)+" · ":""}${escapeHtml(p.category||"Other")}</div>
+          ${p.barcode?`<div class="ts mono" style="display:flex;align-items:center;gap:5px;"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" fill="none"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14"/></svg>${escapeHtml(p.barcode)}</div>`:""}</div>
         </div>
       </td>
       <td class="right mono">${money(p.mrp)}</td>
@@ -374,7 +575,14 @@ function openProductModal(id){
         </div>
         <div class="form-grid">
           <div class="field span"><label>Product title</label><input class="input" id="pm-title" value="${p?escapeHtml(p.title):""}" placeholder="e.g. Aashirvaad Atta 5kg"/></div>
-          <div class="field"><label>SKU / Barcode <span class="opt">(optional)</span></label><input class="input mono" id="pm-sku" value="${p?escapeHtml(p.sku||""):""}" placeholder="ATT-5K"/></div>
+          <div class="field"><label>SKU <span class="opt">(optional)</span></label><input class="input mono" id="pm-sku" value="${p?escapeHtml(p.sku||""):""}" placeholder="ATT-5K"/></div>
+          <div class="field span"><label>Barcode <span class="opt">— scanned at billing</span></label>
+            <div style="display:flex;gap:8px;align-items:stretch;">
+              <input class="input mono" id="pm-barcode" value="${p?escapeHtml(p.barcode||""):""}" placeholder="Scan or type, or click Generate" style="flex:1;"/>
+              <button type="button" class="btn btn-sm" id="pm-gen-bc">Generate</button>
+            </div>
+            <div class="barcode-box" id="pm-bc-preview" style="margin-top:8px;display:none;"><svg id="pm-bc-svg"></svg></div>
+          </div>
           <div class="field"><label>Category</label><input class="input" id="pm-cat" list="pm-cats" value="${p?escapeHtml(p.category||"Other"):"Grocery"}"/>
             <datalist id="pm-cats">${cats.map(c=>`<option value="${escapeHtml(c)}">`).join("")}</datalist></div>
           <div class="field"><label>MRP (${cur()})</label><input class="input" id="pm-mrp" type="number" min="0" step="0.01" value="${p?p.mrp:""}" placeholder="0.00"/></div>
@@ -383,7 +591,7 @@ function openProductModal(id){
             <select class="select" id="pm-gst">${[0,5,12,18,28].map(r=>`<option value="${r}" ${p? (p.gst==r?"selected":"") : (S().defaultGst==r?"selected":"")}>${r}%</option>`).join("")}</select></div>
           <div class="field"><label>Stock qty <span class="opt">(optional)</span></label><input class="input" id="pm-stock" type="number" min="0" value="${p&&p.stock!==""&&p.stock!==undefined&&p.stock!==null?p.stock:""}" placeholder="—"/></div>
         </div>
-        <div class="hint" style="margin-top:12px;">A unique QR code is generated automatically. Scanning it shows the product image, title, selling price &amp; MRP.</div>
+        <div class="hint" style="margin-top:12px;">A unique <strong>QR</strong> (customer scans → sees image, title &amp; price) and a <strong>barcode</strong> (shop owner scans → adds to bill) are generated automatically.</div>
       </div>
       <div class="modal-foot">
         <button class="btn" data-close>Cancel</button>
@@ -404,6 +612,14 @@ function openProductModal(id){
   $("#pm-cat").oninput = ()=>{ if(!$("#pm-img").value.trim() && !/^data:image\/(png|jpe?g)/.test(uploadedImg)) refreshPreview(); };
   $("#pm-file").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ uploadedImg=r.result; $("#pm-preview").src=r.result; $("#pm-img").value=""; }; r.readAsDataURL(f); };
 
+  // barcode preview
+  const drawPm = ()=>{ const v=$("#pm-barcode").value.trim(); const box=$("#pm-bc-preview"); const svg=$("#pm-bc-svg");
+    if(v && drawBarcode(svg, v, {displayValue:true, height:46, fontSize:13, width:1.8, margin:4})) box.style.display="inline-block";
+    else box.style.display="none"; };
+  drawPm();
+  $("#pm-barcode").oninput = drawPm;
+  $("#pm-gen-bc").onclick = ()=>{ $("#pm-barcode").value = genBarcode(); drawPm(); };
+
   $("#pm-save").onclick = ()=>{
     const title = $("#pm-title").value.trim();
     if(!title){ toast("Enter a product title"); return; }
@@ -414,6 +630,7 @@ function openProductModal(id){
     const stockRaw = $("#pm-stock").value.trim();
     const rec = {
       title, sku:$("#pm-sku").value.trim(), category:cat,
+      barcode: $("#pm-barcode").value.trim() || genBarcode(),
       mrp, selling:sell, gst:Number($("#pm-gst").value),
       stock: stockRaw===""?"":Number(stockRaw), img
     };
@@ -423,20 +640,30 @@ function openProductModal(id){
   };
 }
 
-/* ---------- QR modal + scan preview ---------- */
+/* ---------- Product label (QR + barcode) modal + scan preview ---------- */
 function openQRModal(id){
   const p = state.products.find(x=>x.id===id); if(!p) return;
   const big = qrDataURL(productScanURL(p), 6, 2);
   openModal(`
-    <div class="modal" style="max-width:420px;">
-      <div class="modal-head"><h3>Product QR</h3><button class="btn btn-ghost btn-sm close" data-close>✕</button></div>
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-head"><h3>Product label</h3><button class="btn btn-ghost btn-sm close" data-close>✕</button></div>
       <div class="modal-body" style="text-align:center;">
-        <div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;display:inline-block;">
-          ${big?`<img src="${big}" alt="QR" style="width:220px;height:220px;image-rendering:pixelated;"/>`:"QR unavailable offline"}
+        <div style="font-weight:700;font-size:16px;">${escapeHtml(p.title)}</div>
+        <div class="hint" style="margin-bottom:14px;">${money(p.selling)} · MRP ${money(p.mrp)}</div>
+        <div style="display:flex;gap:16px;justify-content:center;align-items:flex-start;flex-wrap:wrap;">
+          <div style="text-align:center;">
+            <div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;display:inline-block;">
+              ${big?`<img src="${big}" alt="QR" style="width:150px;height:150px;image-rendering:pixelated;"/>`:"QR offline"}
+            </div>
+            <div class="hint" style="margin-top:6px;">QR — customer scans for price</div>
+            <button class="btn btn-sm" id="dl-qr" style="margin-top:8px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>Download QR</button>
+          </div>
+          <div style="text-align:center;">
+            <div class="barcode-box" style="padding:12px;"><svg id="ql-bc"></svg></div>
+            <div class="hint" style="margin-top:6px;">Barcode — shop scans to bill</div>
+            <button class="btn btn-sm" id="dl-bc" style="margin-top:8px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>Download barcode</button>
+          </div>
         </div>
-        <div style="margin-top:14px;font-weight:650;">${escapeHtml(p.title)}</div>
-        <div class="hint">${money(p.selling)} · MRP ${money(p.mrp)}</div>
-        <div class="hint" style="margin-top:10px;">Print this label for the shelf. Customers scan it to see the image, title &amp; price.</div>
       </div>
       <div class="modal-foot">
         <button class="btn" data-close>Close</button>
@@ -444,8 +671,31 @@ function openQRModal(id){
         <button class="btn btn-primary" id="qr-print">Print label</button>
       </div>
     </div>`);
+  drawBarcode($("#ql-bc"), p.barcode, {displayValue:true, height:80, fontSize:14, width:1.9, margin:4});
+  const nm = slug(p.sku || p.title);
+  $("#dl-qr").onclick = ()=> downloadDataURL(qrPngDataURL(productScanURL(p), 8, 4), nm+"-qr.png");
+  $("#dl-bc").onclick = ()=> downloadDataURL(barcodeDataURL(p.barcode), nm+"-barcode.png");
   $("#qr-preview").onclick = ()=> previewScan(id);
-  $("#qr-print").onclick = ()=> window.open(productScanURL(p), "_blank");
+  $("#qr-print").onclick = ()=> printLabel(p);
+}
+function printLabel(p){
+  const qr = qrDataURL(productScanURL(p), 6, 1) || "";
+  const bc = barcodeDataURL(p.barcode);
+  const w = window.open("", "_blank", "width=420,height=560");
+  if(!w){ toast("Allow pop-ups to print labels"); return; }
+  w.document.write(`<!doctype html><html><head><title>Label — ${escapeHtml(p.title)}</title>
+    <style>body{font-family:'Segoe UI',sans-serif;text-align:center;padding:18px;margin:0;color:#201D17}
+    .n{font-weight:700;font-size:17px} .p{font-size:24px;font-weight:800;margin:4px 0} .m{color:#726A5C;font-size:13px}
+    .row{display:flex;gap:14px;justify-content:center;align-items:center;margin-top:12px}
+    img{max-width:100%}</style></head>
+    <body onload="setTimeout(()=>{print();},150)">
+      <div class="n">${escapeHtml(p.title)}</div>
+      <div class="p">${money(p.selling)}</div>
+      <div class="m">MRP ${money(p.mrp)} · incl. ${p.gst}% GST</div>
+      <div class="row">${qr?`<img src="${qr}" width="130" height="130"/>`:""}${bc?`<img src="${bc}"/>`:`<div>${escapeHtml(p.barcode||"")}</div>`}</div>
+      <div class="m" style="margin-top:10px;">${escapeHtml(S().name||"")}</div>
+    </body></html>`);
+  w.document.close();
 }
 function previewScan(id){ const p=state.products.find(x=>x.id===id); if(p) window.open(productScanURL(p), "_blank","width=430,height=800"); }
 
@@ -468,20 +718,20 @@ function renderInvoices(){
   $$("#inv-tbody [data-open]").forEach(b=>b.onclick=()=>{ const inv=state.invoices.find(i=>i.number===b.dataset.open); openInvoiceModal(inv); });
 }
 
-function generateInvoice(){
+function commitInvoice(payment){
   const t = billTotals();
-  if(!t.items.length){ toast("Add at least one product"); return; }
+  if(!t.items.length){ toast("Cart is empty — scan or add an item"); return null; }
   const now = new Date();
   const number = (S().prefix||"INV-") + (S().invSeq);
   const inv = {
-    number, ts: now.getTime(),
+    number, ts: now.getTime(), payment: payment||null,
     date: now.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}),
     time: now.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}),
     template: S().template, inclusive: S().inclusive, currency: cur(),
     business: {...S()},
     customer: {
-      name:$("#cust-name").value.trim(), phone:$("#cust-phone").value.trim(),
-      gstin:$("#cust-gstin").value.trim(), state:$("#cust-state").value || S().state
+      name:customer.name.trim(), phone:customer.phone.trim(),
+      gstin:customer.gstin.trim(), state:customer.state || S().state
     },
     items: t.items.map(it=>({ title:it.p.title, sku:it.p.sku, hsn:it.p.hsn||"", qty:it.qty, price:it.p.selling, gst:it.g, taxable:it.taxable, tax:it.tax, gross:it.gross })),
     taxable:t.taxable, tax:t.tax, cgst:t.cgst, sgst:t.sgst, igst:t.igst, inter:t.inter, roundOff:t.roundOff, grand:t.grand, byRate:t.byRate
@@ -489,37 +739,209 @@ function generateInvoice(){
   state.settings.invSeq += 1;
   state.invoices.push(inv);
   save();
-  openInvoiceModal(inv);
-  // reset bill
-  cart = {}; $("#cust-name").value=""; $("#cust-phone").value=""; $("#cust-gstin").value="";
-  renderPickGrid(); renderCart();
-  toast("Invoice "+number+" generated");
+  return inv;
+}
+function resetBill(){
+  cart = {}; customer = { name:"", phone:"", gstin:"", state:"" };
+  renderPickGrid(); renderCart(); focusScan();
+}
+/* ============================================================
+   Direct thermal printing — Web Serial → ESC/POS (NO print dialog)
+   The app opens the printer's port itself (Chrome/Edge, https/localhost).
+   ============================================================ */
+let serialPort = null, printerReady = false;
+const serialSupported = ()=> ("serial" in navigator);
+
+async function connectPrinter(){
+  if(!serialSupported()){ toast("Open the app in Chrome/Edge over https to connect the printer"); return false; }
+  try{
+    serialPort = await navigator.serial.requestPort();      // first time: pick "BlueTooth Printer" / COM4
+    await serialPort.open({ baudRate: 9600 });
+    printerReady = true; updatePrinterChip(); toast("Printer connected — prints are now one-click & silent");
+    return true;
+  }catch(e){ printerReady=false; updatePrinterChip(); return false; }
+}
+async function ensurePrinter(){
+  if(printerReady && serialPort && serialPort.writable) return true;
+  if(!serialSupported()) return false;
+  try{
+    const ports = await navigator.serial.getPorts();        // silently reuse an already-granted port
+    if(ports && ports.length){
+      serialPort = ports[0];
+      if(!serialPort.writable) await serialPort.open({ baudRate: 9600 });
+      printerReady = true; updatePrinterChip(); return true;
+    }
+  }catch(e){}
+  printerReady = false; updatePrinterChip(); return false;
+}
+async function printReceipt(inv){
+  const ok = await ensurePrinter(); if(!ok) return false;
+  try{
+    const w = serialPort.writable.getWriter();
+    try{ await w.write(escposReceipt(inv)); } finally { w.releaseLock(); }
+    return true;
+  }catch(e){ printerReady=false; updatePrinterChip(); toast("Print failed — reconnect the printer"); return false; }
+}
+function updatePrinterChip(){
+  const el = document.getElementById("printer-chip"); if(!el) return;
+  const icon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>`;
+  el.innerHTML = icon + (printerReady ? "<span class='label'>Printer ready</span>" : "<span class='label'>Connect printer</span>");
+  el.classList.toggle("ok", printerReady);
+}
+// ESC/POS byte stream for a 58mm printer (32 chars/line, ASCII only)
+function escposReceipt(inv){
+  const W=32, enc=new TextEncoder(), out=[];
+  const raw=a=>{ for(const b of a) out.push(b); };
+  const t=s=>{ for(const b of enc.encode(s)) out.push(b); };
+  const nl=()=>out.push(0x0A);
+  const ln=s=>{ t(s); nl(); };
+  const clean=s=>String(s).replace(/₹/g,"Rs ").replace(/[^\x20-\x7E]/g," ").replace(/\s+$/,"");
+  const m=n=>"Rs "+new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
+  const wrap=s=>{ s=clean(s).trim(); const w=[]; let cur=""; s.split(/\s+/).forEach(word=>{ if((cur+" "+word).trim().length>W){ if(cur) w.push(cur); cur=word.length>W?word.slice(0,W):word; } else cur=(cur?cur+" ":"")+word; }); if(cur) w.push(cur); return w.length?w:[""]; };
+  const lr=(l,r)=>{ l=clean(l); r=clean(r); if(l.length+r.length>=W) l=l.slice(0,Math.max(0,W-r.length-1)); return l+" ".repeat(Math.max(1,W-l.length-r.length))+r; };
+  raw([0x1B,0x40]);                                   // init
+  raw([0x1B,0x61,0x01]); raw([0x1B,0x45,0x01]); raw([0x1D,0x21,0x11]); // center, bold, double
+  ln(clean(inv.business.name));
+  raw([0x1D,0x21,0x00]); raw([0x1B,0x45,0x00]);       // normal
+  inv.business.address.split("\n").forEach(a=> wrap(a).forEach(ln));
+  ln("GSTIN: "+clean(inv.business.gstin));
+  ln(clean(inv.business.phone));
+  raw([0x1B,0x61,0x00]);                              // left
+  ln("-".repeat(W));
+  ln(clean(inv.number)); ln(inv.date+"  "+inv.time);
+  if(inv.customer && inv.customer.name) ln("To: "+clean(inv.customer.name)+(inv.customer.phone?" "+clean(inv.customer.phone):""));
+  ln("-".repeat(W));
+  inv.items.forEach(it=>{ wrap(it.title).forEach(ln); ln(lr(`${it.qty} x ${m(it.price)} ${it.gst}%`, m(it.gross))); });
+  ln("-".repeat(W));
+  ln(lr("Taxable", m(inv.taxable)));
+  if(inv.inter) ln(lr("IGST", m(inv.igst)));
+  else { ln(lr("CGST", m(inv.cgst))); ln(lr("SGST", m(inv.sgst))); }
+  raw([0x1B,0x45,0x01]); ln(lr("TOTAL", m(inv.grand))); raw([0x1B,0x45,0x00]);
+  if(inv.payment) ln(lr("Paid via", inv.payment.mode==="upi"?"UPI":"Cash"));
+  ln("-".repeat(W));
+  wrap(amountWords(inv.grand)).forEach(ln);
+  ln("-".repeat(W));
+  raw([0x1B,0x61,0x01]);                              // center
+  wrap(inv.business.terms||"Thank you!").forEach(ln);
+  nl(); nl(); nl();
+  raw([0x1D,0x56,0x42,0x00]);                         // partial cut (ignored if no cutter)
+  return new Uint8Array(out);
 }
 
-function openInvoiceModal(inv){
+// opts: { print:true } prints; opts.template display template; opts.payment {mode}
+async function generateInvoice(opts){
+  opts = opts || {};
+  const inv = commitInvoice(opts.payment); if(!inv) return;
+  if(opts.print){
+    const sent = await printReceipt(inv);              // direct ESC/POS — no dialog
+    if(sent){ resetBill(); toast("Invoice "+inv.number+" printed"); return; }
+    openInvoiceModal(inv, opts.template);              // fallback: browser dialog if not connected yet
+    setTimeout(()=>window.print(), 220);
+    resetBill();
+    toast("Tip: click ‘Connect printer’ once for silent one-click printing");
+    return;
+  }
+  openInvoiceModal(inv, opts.template);
+  resetBill();
+  toast("Invoice "+inv.number+" saved");
+}
+
+// Checkout: pick Cash/UPI, optional customer details, then print the thermal receipt
+function openCheckout(expandCust){
+  const t = billTotals();
+  if(!t.items.length){ toast("Cart is empty — scan an item"); return; }
+  let mode = "cash";
+  const stateOpts = `<option value="">Same state (${escapeHtml(S().state)})</option>` +
+    STATES.map(s=>`<option value="${s}" ${customer.state===s?"selected":""}>${s}</option>`).join("");
+  openModal(`
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-head"><h3>Checkout</h3><button class="btn btn-ghost btn-sm close" data-close>✕</button></div>
+      <div class="modal-body">
+        <div class="pay-total"><span>Amount payable</span><b>${money(t.grand)}</b></div>
+
+        <div class="section-title" style="margin:16px 0 8px;">Payment method</div>
+        <div class="pay-methods">
+          <label class="pay-radio"><input type="radio" name="paymode" value="cash" checked/><span>Cash</span></label>
+          <label class="pay-radio"><input type="radio" name="paymode" value="upi"/><span>UPI</span></label>
+        </div>
+
+        <div class="pay-cust">
+          <button type="button" class="cust-toggle" id="co-cust-toggle" aria-expanded="${expandCust?"true":"false"}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+            <span>Customer details <span class="opt">(optional)</span></span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="cust-fields" id="co-cust-fields" ${expandCust?"":"hidden"}>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <input class="input" id="cust-name" placeholder="Customer name" value="${escapeHtml(customer.name)}"/>
+              <input class="input" id="cust-phone" placeholder="Phone" value="${escapeHtml(customer.phone)}"/>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 150px; gap:10px; margin-top:10px;">
+              <input class="input" id="cust-gstin" placeholder="Customer GSTIN (B2B)" value="${escapeHtml(customer.gstin)}"/>
+              <select class="select" id="cust-state" title="Place of supply">${stateOpts}</select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close>Cancel</button>
+        <button class="btn btn-accent" id="pay-confirm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
+          Confirm &amp; Print <kbd>Enter</kbd>
+        </button>
+      </div>
+    </div>`);
+
+  $$('input[name="paymode"]').forEach(r=> r.onchange=()=>{ mode=r.value; });
+  $("#cust-name").oninput  = e=> customer.name  = e.target.value;
+  $("#cust-phone").oninput = e=> customer.phone = e.target.value;
+  $("#cust-gstin").oninput = e=> customer.gstin = e.target.value;
+  $("#cust-state").onchange = e=> customer.state = e.target.value;
+  $("#co-cust-toggle").onclick = ()=>{ const f=$("#co-cust-fields"); const open=f.hidden; f.hidden=!open; $("#co-cust-toggle").setAttribute("aria-expanded", open); };
+
+  const confirm = ()=>{ closeModal(); generateInvoice({print:true, template:"thermal", payment:{mode}}); };
+  $("#pay-confirm").onclick = confirm;
+  const modalEl = $("#modal-root .modal");
+  if(modalEl) modalEl.onkeydown = (e)=>{ if(e.key==="Enter" && document.activeElement.tagName!=="SELECT"){ e.preventDefault(); confirm(); } };
+  if(expandCust){ setTimeout(()=>{ const n=$("#cust-name"); if(n) n.focus(); }, 40); }
+}
+
+// Sets the print page size/margins to match the template (thermal 58mm vs A4)
+function setPrintPage(tpl){
+  let st = document.getElementById("print-page");
+  if(!st){ st = document.createElement("style"); st.id = "print-page"; document.head.appendChild(st); }
+  // Thermal: keep the driver's own 58mm paper, just kill the page margin (the 12mm margin was squishing it).
+  // Do NOT set @page size — "58mm auto" makes some ESC/POS drivers print nothing.
+  st.textContent = (tpl==="thermal")
+    ? "@media print{ @page{ margin:0; } }"
+    : "@media print{ @page{ size:A4; margin:12mm; } }";
+}
+function openInvoiceModal(inv, tplOverride){
+  const tpl0 = tplOverride || inv.template;
+  setPrintPage(tpl0);
   openModal(`
     <div class="modal wide">
       <div class="modal-head">
         <h3>Invoice ${escapeHtml(inv.number)}</h3>
         <select class="select" id="inv-tpl-switch" style="width:auto;margin-left:10px;">
-          <option value="classic" ${inv.template==="classic"?"selected":""}>Classic</option>
-          <option value="modern" ${inv.template==="modern"?"selected":""}>Modern</option>
-          <option value="thermal" ${inv.template==="thermal"?"selected":""}>Thermal 80mm</option>
+          <option value="classic" ${tpl0==="classic"?"selected":""}>Classic</option>
+          <option value="modern" ${tpl0==="modern"?"selected":""}>Modern</option>
+          <option value="thermal" ${tpl0==="thermal"?"selected":""}>Thermal 80mm</option>
         </select>
         <button class="btn btn-ghost btn-sm close" data-close style="margin-left:auto;">✕</button>
       </div>
       <div class="modal-body" style="padding:0;">
-        <div class="invoice-scroll" id="print-area">${renderInvoiceHTML(inv, inv.template)}</div>
+        <div class="invoice-scroll" id="print-area">${renderInvoiceHTML(inv, tpl0)}</div>
       </div>
       <div class="modal-foot">
         <button class="btn" data-close>Close</button>
         <button class="btn btn-accent" id="inv-print">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
-          Print / Save PDF
+          Print / Save PDF <kbd>Ctrl+P</kbd>
         </button>
       </div>
     </div>`);
-  $("#inv-tpl-switch").onchange = (e)=>{ $("#print-area").innerHTML = renderInvoiceHTML(inv, e.target.value); };
+  $("#inv-tpl-switch").onchange = (e)=>{ setPrintPage(e.target.value); $("#print-area").innerHTML = renderInvoiceHTML(inv, e.target.value); };
   $("#inv-print").onclick = ()=> window.print();
 }
 
@@ -536,6 +958,10 @@ function invItemsRows(inv, thermal){
   ).join("");
 }
 function invQR(inv){ const d = qrDataURL(`${inv.number}|${inv.business.gstin}|${money(inv.grand)}`, 4, 0); return d?`<img src="${d}" alt="QR"/>`:""; }
+function payLine(inv){
+  if(!inv.payment) return "";
+  return `<div class="inv-tot-row"><span>Paid via</span><span>${inv.payment.mode==="upi"?"UPI":"Cash"}</span></div>`;
+}
 
 function renderInvoiceHTML(inv, tpl){
   const b = inv.business, c = inv.customer;
@@ -564,6 +990,7 @@ function renderInvoiceHTML(inv, tpl){
         ${Math.abs(inv.roundOff)>=0.005?`<div class="trow2"><span>Round off</span><span>${inv.roundOff>=0?"+":"−"}${money(Math.abs(inv.roundOff))}</span></div>`:""}
         <hr class="dashed"/>
         <div class="trow2" style="font-size:15px;font-weight:700;"><span>TOTAL</span><span>${money(inv.grand)}</span></div>
+        ${inv.payment?`<div class="trow2"><span>Paid via</span><span>${inv.payment.mode==="upi"?"UPI":"Cash"}</span></div>`:""}
         <div class="inv-words">${amountWords(inv.grand)}</div>
         <div class="inv-qr">${invQR(inv)}</div>
         <hr class="dashed"/>
@@ -602,6 +1029,7 @@ function renderInvoiceHTML(inv, tpl){
           ${taxLabel}
           ${Math.abs(inv.roundOff)>=0.005?`<div class="inv-tot-row"><span class="inv-muted">Round off</span><span>${inv.roundOff>=0?"+":"−"}${money(Math.abs(inv.roundOff))}</span></div>`:""}
           <div class="inv-tot-row g"><span>Total</span><span>${money(inv.grand)}</span></div>
+          ${payLine(inv)}
         </div>
       </div>
       <div class="inv-words"><strong>In words:</strong> ${amountWords(inv.grand)}</div>
@@ -643,6 +1071,7 @@ function renderInvoiceHTML(inv, tpl){
           ${taxLabel}
           ${Math.abs(inv.roundOff)>=0.005?`<div class="inv-tot-row"><span>Round off</span><span>${inv.roundOff>=0?"+":"−"}${money(Math.abs(inv.roundOff))}</span></div>`:""}
           <div class="inv-tot-row g"><span>Grand Total</span><span>${money(inv.grand)}</span></div>
+          ${payLine(inv)}
         </div>
       </div>
       <hr class="inv-hr"/>
@@ -787,8 +1216,7 @@ function renderDailyTable(list){
    ============================================================ */
 function fillStateSelects(){
   const opts = STATES.map(s=>`<option value="${s}">${s}</option>`).join("");
-  $("#s-state").innerHTML = opts;
-  $("#cust-state").innerHTML = `<option value="">Same state</option>`+opts;
+  if($("#s-state")) $("#s-state").innerHTML = opts;   // customer state select lives in the checkout dialog now
 }
 function renderSettings(){
   const s = S();
@@ -841,16 +1269,30 @@ function toast(msg){ const w=$("#toast-wrap"); const t=document.createElement("d
    ============================================================ */
 function init(){
   fillStateSelects();
-  $("#cust-state").value = "";
   // nav
   $$("#nav .nav-item").forEach(b=> b.onclick=()=>setView(b.dataset.view));
   $$("#mobile-nav button").forEach(b=> b.onclick=()=>setView(b.dataset.view));
   // billing
-  $("#pick-search").oninput = (e)=>{ pickFilter.q=e.target.value; renderPickGrid(); };
   $("#prod-search").oninput = (e)=>{ prodQuery=e.target.value; renderProducts(); };
-  $("#cust-state").onchange = renderCart;
-  $("#cart-clear").onclick = ()=>{ cart={}; renderPickGrid(); renderCart(); };
-  $("#btn-generate").onclick = generateInvoice;
+
+  // scanner input: hardware scanner types the code + Enter; typing shows suggestions
+  const si=$("#scan-input");
+  if(si){
+    si.oninput = renderSuggest;
+    si.onkeydown = (e)=>{
+      if(e.key==="Enter"){ e.preventDefault(); scanEnter(); }
+      else if(e.key==="ArrowDown"){ e.preventDefault(); moveSuggest(1); }
+      else if(e.key==="ArrowUp"){ e.preventDefault(); moveSuggest(-1); }
+      else if(e.key==="Escape"){ hideSuggest(); }
+    };
+    si.onblur = ()=> setTimeout(hideSuggest, 150);
+  }
+  $("#scan-add").onclick = scanEnter;
+  $("#scan-clear").onclick = ()=>{ cart={}; renderCart(); focusScan(); };
+
+  // sticky action bar → checkout (Cash / UPI) then print thermal receipt
+  $("#ab-print").onclick = openCheckout;
+
   // analytics period toggle
   $$("#period-seg button").forEach(b=> b.onclick=()=>{ anPeriod=b.dataset.period; $$("#period-seg button").forEach(x=>x.classList.toggle("active",x===b)); renderAnalytics(); });
   // settings toggles + template
@@ -862,11 +1304,22 @@ function init(){
   });
   // esc closes modal
   document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") closeModal(); });
+  // native-app keyboard shortcuts (function keys, Alt+number)
+  document.addEventListener("keydown", handleShortcut);
+  // keyboard-wedge: in scan mode, any stray key focuses the scan box so no scan is lost
+  document.addEventListener("keydown",(e)=>{
+    if(billMode!=="scan" || currentView!=="billing" || !$("#modal-root").hidden) return;
+    if(e.ctrlKey||e.altKey||e.metaKey) return;
+    const tag=(document.activeElement||{}).tagName||"";
+    if(/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+    if(e.key.length===1){ focusScan(); }
+  });
 
-  renderPickCats(); renderPickGrid(); renderCart(); renderTopbar();
+  renderPickCats(); renderPickGrid(); renderCart(); renderTopbar(); renderHolds();
   const views = ["billing","products","invoices","analytics","settings"];
+  const go = (h)=>{ if(h==="scan"){ setView("billing"); setBillMode("scan"); } else if(views.includes(h)) setView(h); };
   const deep = location.hash.replace("#","");
-  setView(views.includes(deep) ? deep : "billing");
-  window.addEventListener("hashchange", ()=>{ const h=location.hash.replace("#",""); if(views.includes(h)) setView(h); });
+  if(deep==="scan") go("scan"); else setView(views.includes(deep) ? deep : "billing");
+  window.addEventListener("hashchange", ()=>{ go(location.hash.replace("#","")); });
 }
 document.addEventListener("DOMContentLoaded", init);

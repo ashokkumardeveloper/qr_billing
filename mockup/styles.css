@@ -186,7 +186,18 @@ textarea.input { resize: vertical; min-height: 70px; }
 
 /* ---------- Cart ---------- */
 .cart { position: sticky; top: 84px; }
-.cart-lines { display: flex; flex-direction: column; max-height: 42vh; overflow: auto; }
+.cart-lines { display: flex; flex-direction: column; }
+
+/* Collapsible customer (optional) at top of cart */
+.cust-bar { border-bottom: 1px solid var(--line); }
+.cust-toggle { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 18px; background: transparent; border: 0; font-size: 13.5px; font-weight: 600; color: var(--ink-2); text-align: left; }
+.cust-toggle:hover { background: var(--surface-2); }
+.cust-toggle svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.cust-toggle .opt { color: var(--muted); font-weight: 500; }
+.cust-toggle #cust-toggle-label { flex: 1; }
+.cust-toggle .chev { transition: transform .15s; }
+.cust-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.cust-fields { padding: 4px 18px 16px; }
 .cart-empty { padding: 34px 18px; text-align: center; color: var(--muted); }
 .cart-empty svg { width: 40px; height: 40px; opacity: .35; margin-bottom: 8px; }
 .line {
@@ -207,6 +218,116 @@ textarea.input { resize: vertical; min-height: 70px; }
 .trow.grand { border-top: 1px dashed var(--line-2); margin-top: 8px; padding-top: 10px; font-size: 18px; font-weight: 750; color: var(--ink); }
 .trow .tval { font-variant-numeric: tabular-nums; }
 .trow.muted { color: var(--muted); font-size: 12.5px; }
+
+/* ---------- Bill modes / scanner / action bar ---------- */
+.bill-modes { display:flex; align-items:center; gap:16px; margin-bottom:16px; flex-wrap:wrap; }
+.mode-hint { color:var(--muted); font-size:13px; }
+.bill-left { display:flex; flex-direction:column; gap:16px; min-width:0; }
+
+.scan-status { margin-left:auto; font-size:12.5px; font-weight:650; color:var(--ok); display:inline-flex; align-items:center; gap:7px; }
+.scan-status::before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }
+.scan-status.busy { color:var(--danger); }
+.scan-wrap { display:flex; flex-direction:column; gap:18px; }
+.scan-input-row { display:flex; gap:10px; }
+.scan-input { font-size:16px !important; font-family:var(--num); letter-spacing:.03em; }
+.scan-input-row .btn { padding-left:20px; padding-right:20px; }
+.scan-last { border:1px dashed var(--line-2); border-radius:var(--radius); background:var(--surface-2); min-height:120px; display:flex; align-items:center; gap:16px; padding:16px; }
+.scan-last.flash { background:var(--primary-soft); border-color:var(--primary); border-style:solid; animation:scanpop .22s ease; }
+.scan-last.err { background:var(--accent-soft); border-color:var(--accent); border-style:solid; }
+@keyframes scanpop { from { transform:scale(.99); } to { transform:scale(1); } }
+.scan-last .sl-img { width:88px; height:88px; border-radius:10px; object-fit:cover; border:1px solid var(--line); background:#fff; flex:none; }
+.scan-last .sl-body { flex:1; min-width:0; }
+.scan-last .sl-name { font-size:18px; font-weight:700; }
+.scan-last .sl-meta { color:var(--muted); font-size:13px; margin-top:2px; font-family:var(--num); }
+.scan-last .sl-price { font-size:26px; font-weight:750; margin-top:6px; font-variant-numeric:tabular-nums; }
+.scan-last .sl-added { margin-left:auto; text-align:right; color:var(--ok); font-weight:700; font-size:14px; }
+.scan-empty { color:var(--muted); margin:auto; }
+.scan-sim { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.scan-sim button { border:1px solid var(--line-2); background:var(--surface); border-radius:8px; padding:7px 11px; font-size:12.5px; font-weight:600; display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; }
+.scan-sim button:hover { border-color:var(--primary); background:var(--primary-soft); color:var(--primary-ink); }
+.scan-sim button .c { font-family:var(--num); font-size:11px; color:var(--muted); }
+
+/* Shared customer bar at top */
+.cust-bar-top { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); margin-bottom:16px; }
+.cust-bar-top .cust-toggle { border-radius:var(--radius-lg); }
+
+/* Solo (scan) layout — full-width classic table */
+.billing.solo { grid-template-columns: 1fr; }
+
+/* Quick-bill search + type-ahead suggestions */
+.scan-search { display:flex; gap:10px; padding:16px 18px; border-bottom:1px solid var(--line); }
+.sugg-anchor { flex:1; }
+.suggest { position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:35; background:var(--surface); border:1px solid var(--line-2); border-radius:var(--radius); box-shadow:var(--shadow-lg); max-height:340px; overflow-y:auto; }
+.sg { display:flex; align-items:center; gap:12px; padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--line); }
+.sg:last-child { border-bottom:0; }
+.sg:hover, .sg.active { background:var(--primary-soft); }
+.sg img { width:38px; height:38px; border-radius:7px; object-fit:cover; border:1px solid var(--line); flex:none; }
+.sg-b { flex:1; min-width:0; }
+.sg-n { font-weight:600; font-size:14px; }
+.sg-m { font-size:12px; color:var(--muted); font-family:var(--num); }
+.sg-add { font-size:12px; font-weight:700; color:var(--primary-ink); background:var(--surface); border:1px solid var(--line-2); border-radius:6px; padding:3px 9px; flex:none; }
+.sg.active .sg-add { background:var(--primary); color:#fff; border-color:var(--primary); }
+.sg-empty { padding:14px; color:var(--muted); font-size:13px; text-align:center; }
+
+/* Classic billing table */
+.bill-table td { padding:9px 14px; }
+.bill-table .just-added { animation: rowin .6s ease; }
+@keyframes rowin { from { background:var(--primary-soft); } to { background:transparent; } }
+.qty-input { width:76px; text-align:center; padding:7px 8px; border:1px solid var(--line-2); border-radius:7px; font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; background:var(--surface); color:var(--ink); outline:none; }
+.qty-input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
+
+/* Billing view uses the normal page (global) scroll; extra bottom room for the fixed bar */
+#view-billing { padding-bottom: 92px; }
+
+/* Payment (checkout) modal */
+.pay-total { display:flex; justify-content:space-between; align-items:baseline; padding:12px 14px; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius); }
+.pay-total b { font-size:26px; font-weight:750; font-variant-numeric:tabular-nums; }
+.pay-seg { display:flex; gap:8px; background:var(--surface-2); border:1px solid var(--line-2); border-radius:22px; padding:4px; margin-top:14px; }
+.pay-seg button { flex:1; border:0; background:transparent; padding:10px; border-radius:18px; font-size:15px; font-weight:650; color:var(--muted); }
+.pay-seg button.active { background:var(--primary); color:#fff; }
+.pay-change { margin-top:12px; padding:10px 14px; border-radius:var(--radius); background:var(--primary-soft); color:var(--primary-ink); font-weight:600; display:flex; justify-content:space-between; }
+.pay-change b { font-size:18px; font-variant-numeric:tabular-nums; }
+.pay-quick { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.pay-upi-box { text-align:center; padding:20px 14px; border:1px dashed var(--line-2); border-radius:var(--radius); background:var(--surface-2); color:var(--ink-2); }
+.pay-methods { display:flex; gap:10px; }
+.pay-radio { flex:1; display:flex; align-items:center; gap:10px; padding:11px 14px; border:1px solid var(--line-2); border-radius:var(--radius); cursor:pointer; font-weight:650; font-size:15px; }
+.pay-radio input { accent-color:var(--primary); width:17px; height:17px; }
+.pay-radio:has(input:checked) { border-color:var(--primary); background:var(--primary-soft); color:var(--primary-ink); }
+#printer-chip.ok { color:var(--primary-ink); border-color:color-mix(in srgb, var(--primary) 45%, white); background:var(--primary-soft); }
+.pay-cust { margin-top:16px; border-top:1px solid var(--line); }
+.pay-cust .cust-toggle { padding:12px 0; }
+.pay-cust .cust-fields { padding:4px 0 2px; }
+
+.barcode-box { background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 10px; display:inline-block; }
+.barcode-box svg { display:block; }
+
+/* Sticky action bar */
+.action-bar { position:fixed; left:var(--sidebar-w); right:0; bottom:0; z-index:40;
+  display:flex; align-items:center; gap:18px; padding:10px 26px;
+  background:var(--surface); border-top:1px solid var(--line); box-shadow:0 -10px 28px -14px rgba(38,30,15,.30); }
+.ab-left { display:flex; flex-direction:column; line-height:1.25; min-width:0; }
+.ab-count { font-size:12px; color:var(--muted); font-weight:700; }
+.ab-break { font-size:12.5px; color:var(--ink-2); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ab-grand { margin-left:auto; text-align:right; line-height:1.1; }
+.ab-total-label { font-size:10.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.ab-total { font-size:26px; font-weight:750; font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+.ab-actions { display:flex; gap:10px; }
+.ab-actions .btn { padding:11px 18px; font-size:15px; }
+kbd { font-family:var(--num); font-size:11px; background:rgba(255,255,255,.22); border:1px solid rgba(255,255,255,.32); border-radius:5px; padding:1px 5px; }
+.btn:not(.btn-accent):not(.btn-primary) kbd, .sc-key { background:var(--surface-2); border-color:var(--line-2); color:var(--muted); }
+
+/* Held bills */
+.holds-strip { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.hold-chip { border:1px solid var(--line-2); background:var(--surface); border-radius:20px; padding:6px 12px; font-size:12.5px; font-weight:600; display:inline-flex; align-items:center; gap:8px; }
+.hold-chip:hover { border-color:var(--primary); }
+.hold-chip .x { color:var(--muted); font-weight:700; }
+.hold-chip .x:hover { color:var(--danger); }
+
+/* Shortcuts help */
+.sc-list { display:flex; flex-direction:column; gap:2px; }
+.sc-row { display:flex; align-items:center; gap:12px; padding:8px 4px; border-bottom:1px solid var(--line); }
+.sc-row:last-child { border-bottom:0; }
+.sc-key { font-family:var(--num); font-size:12px; padding:3px 8px; border-radius:6px; min-width:74px; text-align:center; font-weight:600; }
 
 /* ---------- Products table ---------- */
 .table-wrap { overflow-x: auto; }
@@ -335,6 +456,13 @@ table.data .tprod .ts { font-size: 11.5px; color: var(--muted); font-family: var
   .app { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .view { padding: 16px 14px 96px; }
+  .action-bar { left: 0; bottom: 56px; padding: 9px 12px; gap: 12px; }
+  .action-bar .btn .label { display: none; }
+  .action-bar kbd { display: none; }
+  .action-bar .ab-break { display: none; }
+  .action-bar .btn { padding: 10px 13px; }
+  .ab-total { font-size: 21px; }
+  #view-billing { padding-bottom: 150px; }
   .topbar { padding: 12px 16px; }
   .form-grid { grid-template-columns: 1fr; }
   .template-row { grid-template-columns: 1fr; }
@@ -395,14 +523,14 @@ table.data .tprod .ts { font-size: 11.5px; color: var(--muted); font-family: var
 .tpl-modern .inv-table td { border-bottom: 1px solid #f4f0e6; }
 .tpl-modern .inv-table tbody tr:last-child td { border-bottom: 0; }
 
-/* Thermal 80mm */
-.tpl-thermal { width: 320px; font-family: var(--num); font-size: 12px; }
-.tpl-thermal .inv-pad { padding: 18px 18px; }
+/* Thermal 58mm (H58 / POS-58 receipt roll) */
+.tpl-thermal { width: 58mm; font-family: var(--num); font-size: 11px; line-height: 1.35; }
+.tpl-thermal .inv-pad { padding: 8px 3mm; }
 .tpl-thermal .center { text-align: center; }
 .tpl-thermal .inv-title { font-size: 15px; }
 .tpl-thermal .dashed { border: 0; border-top: 1px dashed #999; margin: 8px 0; }
 .tpl-thermal .trow2 { display: flex; justify-content: space-between; }
-.tpl-thermal .inv-table th, .tpl-thermal .inv-table td { padding: 3px 2px; font-size: 11.5px; }
+.tpl-thermal .inv-table th, .tpl-thermal .inv-table td { padding: 3px 1px; font-size: 10.5px; }
 .tpl-thermal .inv-qr { width: 74px; height: 74px; margin: 6px auto 0; }
 
 /* Print */

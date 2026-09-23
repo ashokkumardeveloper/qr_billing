@@ -64,47 +64,58 @@
 
     <!-- ===== Billing ===== -->
     <section class="view" id="view-billing">
-      <div class="billing">
-        <!-- Product picker -->
-        <div class="panel">
-          <div class="pick-toolbar">
-            <div class="input-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
-              <input class="input" id="pick-search" placeholder="Search products by name or SKU…" />
-            </div>
-            <div id="pick-cats" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
-          </div>
-          <div class="product-grid" id="pick-grid"></div>
+      <!-- Quick billing (scan / search → table) -->
+      <div class="panel" id="scan-panel">
+        <div class="panel-head">
+          <h3>Billing</h3>
+          <span class="sub">Scan a barcode, or type a name and pick from the list</span>
+          <span class="scan-status" id="scan-status" style="margin-left:auto;">Ready</span>
+          <button class="btn btn-ghost btn-sm" id="scan-clear">Clear</button>
         </div>
-
-        <!-- Cart -->
-        <div class="cart">
-          <div class="panel">
-            <div class="panel-head">
-              <h3>Current Bill</h3>
-              <span class="sub" id="cart-count">0 items</span>
-              <button class="btn btn-ghost btn-sm" id="cart-clear" style="margin-left:auto;">Clear</button>
-            </div>
-            <div class="cart-lines" id="cart-lines"></div>
-            <div class="totals" id="cart-totals"></div>
-            <div class="panel-body" style="border-top:1px solid var(--line);">
-              <div class="section-title" style="margin-bottom:10px;">Customer (optional)</div>
-              <div style="display:grid; gap:10px;">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                  <input class="input" id="cust-name" placeholder="Customer name" />
-                  <input class="input" id="cust-phone" placeholder="Phone" />
-                </div>
-                <div style="display:grid; grid-template-columns:1fr 130px; gap:10px;">
-                  <input class="input" id="cust-gstin" placeholder="Customer GSTIN (B2B)" />
-                  <select class="select" id="cust-state" title="Place of supply"></select>
-                </div>
-              </div>
-              <button class="btn btn-accent btn-block" id="btn-generate" style="margin-top:14px;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
-                Generate &amp; Print Invoice
-              </button>
-            </div>
+        <div class="scan-search">
+          <div class="input-icon sugg-anchor">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14"/></svg>
+            <input class="input scan-input" id="scan-input" placeholder="Scan barcode or type product name…" autocomplete="off" />
+            <div class="suggest" id="suggest" hidden></div>
           </div>
+          <button class="btn btn-primary" id="scan-add">Add <kbd>Enter</kbd></button>
+        </div>
+        <div class="table-wrap">
+          <table class="data bill-table">
+            <thead>
+              <tr>
+                <th style="width:36px;">#</th>
+                <th>Item</th>
+                <th class="right">Rate</th>
+                <th style="text-align:center; width:130px;">Qty</th>
+                <th class="right">GST</th>
+                <th class="right">Amount</th>
+                <th style="width:44px;"></th>
+              </tr>
+            </thead>
+            <tbody id="scan-cart-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Held bills -->
+      <div class="holds-strip" id="holds-strip" hidden></div>
+
+      <!-- Sticky action bar (never scrolls away) -->
+      <div class="action-bar" id="action-bar">
+        <div class="ab-left">
+          <div class="ab-count" id="ab-count">0 items</div>
+          <div class="ab-break" id="ab-break">Scan or tap to add items</div>
+        </div>
+        <div class="ab-grand">
+          <div class="ab-total-label">Total payable</div>
+          <div class="ab-total" id="ab-total">₹0.00</div>
+        </div>
+        <div class="ab-actions">
+          <button class="btn btn-accent" id="ab-print" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
+            <span class="label">Print receipt</span> <kbd>F9</kbd>
+          </button>
         </div>
       </div>
     </section>
@@ -299,8 +310,9 @@
 <div class="modal-backdrop" id="modal-root" hidden></div>
 <div class="toast-wrap" id="toast-wrap"></div>
 
-<!-- QR generator (offline-capable) -->
+<!-- QR + barcode generators (offline-capable once cached) -->
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
