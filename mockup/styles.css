@@ -524,8 +524,11 @@ table.data .tprod .ts { font-size: 11.5px; color: var(--muted); font-family: var
 .tpl-modern .inv-table tbody tr:last-child td { border-bottom: 0; }
 
 /* Thermal 58mm (H58 / POS-58 receipt roll) */
-.tpl-thermal { width: 58mm; font-family: var(--num); font-size: 11px; line-height: 1.35; }
-.tpl-thermal .inv-pad { padding: 8px 3mm; }
+.tpl-thermal { width: 58mm; font-family: var(--num); font-size: 12px; line-height: 1.4; font-weight: 600; color: #000; }
+.tpl-thermal, .tpl-thermal * { color: #000; }              /* pure black — thermal heads print gray as faint/dithered */
+.tpl-thermal .inv-muted { color: #000; opacity: 1; }
+.tpl-thermal .inv-pad { padding: 8px 3mm 4px; }
+.tpl-thermal .tail-space { height: 34px; }                  /* feed room to tear off */
 .tpl-thermal .center { text-align: center; }
 .tpl-thermal .inv-title { font-size: 15px; }
 .tpl-thermal .dashed { border: 0; border-top: 1px dashed #999; margin: 8px 0; }
@@ -539,6 +542,8 @@ table.data .tprod .ts { font-size: 11.5px; color: var(--muted); font-family: var
   #print-area, #print-area * { visibility: visible; }
   #print-area { position: absolute; inset: 0; background: #fff; padding: 0; }
   #print-area .invoice { box-shadow: none; width: 100%; }
+  /* thermal: solid black, no dithering, so the print is dark and crisp */
+  #print-area .tpl-thermal, #print-area .tpl-thermal * { color: #000 !important; opacity: 1 !important; font-weight: 600 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .invoice-scroll { background: #fff; padding: 0; }
   @page { margin: 12mm; }
 }

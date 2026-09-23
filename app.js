@@ -823,7 +823,7 @@ function escposReceipt(inv){
   ln("-".repeat(W));
   raw([0x1B,0x61,0x01]);                              // center
   wrap(inv.business.terms||"Thank you!").forEach(ln);
-  nl(); nl(); nl();
+  nl(); nl(); nl(); nl(); nl();                       // feed room to tear off
   raw([0x1D,0x56,0x42,0x00]);                         // partial cut (ignored if no cutter)
   return new Uint8Array(out);
 }
@@ -995,6 +995,7 @@ function renderInvoiceHTML(inv, tpl){
         <div class="inv-qr">${invQR(inv)}</div>
         <hr class="dashed"/>
         <div class="center inv-muted">${escapeHtml(b.terms||"Thank you!")}</div>
+        <div class="tail-space"></div>
       </div></div>`;
   }
 
